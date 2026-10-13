@@ -70,7 +70,42 @@
     </style>
 </head>
 <body class="bg-light">
+  <section id="telaLogin" class="container min-vh-100 d-flex align-items-center justify-content-center py-4">
+    <div class="card border-0 shadow-sm rounded-4 w-100" style="max-width: 420px;">
+      <div class="card-body p-4 p-md-5">
+        <div class="text-center mb-4">
+          <div class="rounded-circle bg-primary-subtle text-primary d-inline-flex align-items-center justify-content-center mb-3" style="width:64px;height:64px;">
+            <i class="bi bi-shield-lock fs-2"></i>
+          </div>
+          <h1 class="h3 mb-2">LavSofá</h1>
+          <p class="text-secondary mb-0">Acesso ao Sistema WSS</p>
+        </div>
+        <form id="formLogin">
+          <div class="mb-3">
+            <label for="loginEmail" class="form-label">E-mail</label>
+            <input id="loginEmail" type="email" class="form-control form-control-lg" autocomplete="username" required>
+          </div>
+          <div class="mb-3">
+            <label for="loginSenha" class="form-label">Senha</label>
+            <input id="loginSenha" type="password" class="form-control form-control-lg" autocomplete="current-password" required>
+          </div>
+          <div id="loginErro" class="alert alert-danger d-none" role="alert"></div>
+          <button id="btnEntrar" type="submit" class="btn btn-primary btn-lg w-100">
+            <span id="textoBtnEntrar">Entrar</span>
+            <span id="spinnerLogin" class="spinner-border spinner-border-sm ms-2 d-none" aria-hidden="true"></span>
+          </button>
+        </form>
+        <p class="small text-secondary text-center mt-3 mb-0">Acesso restrito a usuários autorizados.</p>
+      </div>
+    </div>
+  </section>
+  <div id="appContent" class="d-none">
   <div class="container py-4">
+    <div class="d-flex justify-content-end mb-2">
+      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="sairDoSistema()">
+        <i class="bi bi-box-arrow-right me-1"></i> Sair
+      </button>
+    </div>
     <ul class="nav nav-pills menu-principal mb-4" id="pills-tab" role="tablist">
       <li class="nav-item">
         <button class="nav-link active" id="pills-agenda-tab" data-bs-toggle="pill" data-bs-target="#pills-agenda">
@@ -471,6 +506,7 @@
       </div>
     </div>
   </div>
+  </div>
 </body>
 
 <script>
@@ -478,13 +514,106 @@
   const SUPABASE_KEY = 'sb_publishable_5szoir4Z1GhW3YF8Qartxg_vj7_yD8n';
   const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-  // Inicialização da página
-  window.onload = async function () {
-    await carregarCatalogo();
-    await carregarEstoque();
-    await carregarAgenda();
-    atualizarTabelaOrcamento();
-  };
+  // Autenticação: a interface só é exibida após login no Supabase Auth.
+  let inicializacaoEmAndamento = false;
+
+  window.addEventListener('DOMContentLoaded', async function () {
+    document.getElementById('formLogin').addEventListener('submit', entrarNoSistema);
+
+    const { data: { session }, error } = await supabaseClient.auth.getSession();
+
+    if (error) {
+      mostrarErroLogin('Não foi possível verificar a sessão. Atualize a página e tente novamente.');
+      return;
+    }
+
+    if (session) {
+      await abrirSistema();
+    } else {
+      mostrarTelaLogin();
+    }
+  });
+
+  async function entrarNoSistema(event) {
+    event.preventDefault();
+
+    const email = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginSenha').value;
+    const botao = document.getElementById('btnEntrar');
+    const texto = document.getElementById('textoBtnEntrar');
+    const spinner = document.getElementById('spinnerLogin');
+
+    botao.disabled = true;
+    texto.textContent = 'Validando...';
+    spinner.classList.remove('d-none');
+    limparErroLogin();
+
+    const { data, error } = await supabaseClient.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    botao.disabled = false;
+    texto.textContent = 'Entrar';
+    spinner.classList.add('d-none');
+
+    if (error || !data.session) {
+      mostrarErroLogin('E-mail ou senha inválidos, ou usuário sem acesso. Tente novamente.');
+      return;
+    }
+
+    document.getElementById('loginSenha').value = '';
+    await abrirSistema();
+  }
+
+  async function abrirSistema() {
+    if (inicializacaoEmAndamento) return;
+    inicializacaoEmAndamento = true;
+
+    document.getElementById('telaLogin').classList.add('d-none');
+    document.getElementById('appContent').classList.remove('d-none');
+
+    try {
+      await carregarCatalogo();
+      await carregarEstoque();
+      await carregarAgenda();
+      atualizarTabelaOrcamento();
+    } finally {
+      inicializacaoEmAndamento = false;
+    }
+  }
+
+  function mostrarTelaLogin() {
+    document.getElementById('appContent').classList.add('d-none');
+    document.getElementById('telaLogin').classList.remove('d-none');
+  }
+
+  function mostrarErroLogin(mensagem) {
+    const elemento = document.getElementById('loginErro');
+    elemento.textContent = mensagem;
+    elemento.classList.remove('d-none');
+  }
+
+  function limparErroLogin() {
+    const elemento = document.getElementById('loginErro');
+    elemento.textContent = '';
+    elemento.classList.add('d-none');
+  }
+
+  async function sairDoSistema() {
+    const { error } = await supabaseClient.auth.signOut();
+    if (error) {
+      alert('Não foi possível encerrar a sessão. Tente novamente.');
+      return;
+    }
+    mostrarTelaLogin();
+  }
+
+  supabaseClient.auth.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_OUT' || !session) {
+      mostrarTelaLogin();
+    }
+  });
 
   // Variáveis globais
 
